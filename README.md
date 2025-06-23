@@ -1,1 +1,3 @@
-# Grindelwald Bot with contracts, verification, and approval system
+# Grindelwald Bot
+
+Полностью готовый Discord-бот для загрузки на Bot-Hosting.net
