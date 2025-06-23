@@ -1,3 +1,19 @@
+import threading
+from flask import Flask
+from waitress import serve
+
+app = Flask(__name__)
+
+@app.route('/')
+def home():
+    return "Grindelwald bot active."
+
+def run_web():
+    serve(app, host='0.0.0.0', port=8080)
+
+threading.Thread(target=run_web).start()
+
+
 import discord
 from discord.ext import commands
 from discord import app_commands
@@ -24,11 +40,8 @@ user_data = {}  # user_id: {'os': 0, 'rank': 1}
 contract_status = {}  # contract_name: {'cooldown_until': datetime, 'last_executor': user_id}
 
 available_contracts = [
-    "📦 Доставка артефакта",
-    "🕵️ Слежка за магглом",
-    "💣 Подрыв барьера",
-    "🔮 Защита реликвии",
-    "👁️ Тайное наблюдение"
+    "📦 Дары моря",
+    "💣 Металлургия"
 ]
 
 pending_confirmations = {}  # message_id: {'executor': id, 'helper': id, 'contract': str}
@@ -103,31 +116,37 @@ async def контракт_autocomplete(interaction: discord.Interaction, curren
     ]
 
 @bot.tree.command(name="сдать_контракт", description="Заполнить форму сдачи контракта")
-@app_commands.describe(контракт="Контракт", помощник="Кто помогал (необязательно)")
-async def сдать_контракт(interaction: discord.Interaction, контракт: str, помощник: discord.Member = None):
+@app_commands.describe(контракт="Контракт", помощник1="Кто помогал (1)", помощник2="Кто помогал (2)", помощник3="Кто помогал (3)")
+async def сдать_контракт(interaction: discord.Interaction, контракт: str, помощник1: discord.Member = None, помощник2: discord.Member = None, помощник3: discord.Member = None):
     await interaction.response.send_message("📨 Заявка отправлена на рассмотрение Пантеона.", ephemeral=True)
 
     embed = discord.Embed(title="📜 Заявка на подтверждение контракта", color=0x888888)
     embed.add_field(name="Контракт", value=контракт, inline=False)
-    embed.add_field(name="Исполнитель", value=interaction.user.mention, inline=True)
-    embed.add_field(name="Помощник", value=помощник.mention if помощник else "—", inline=True)
+    embed.add_field(name="Исполнитель", value=interaction.user.mention, inline=False)
+
+    helpers = [помощник1, помощник2, помощник3]
+    helper_mentions = [m.mention for m in helpers if m]
+    helper_ids = [m.id for m in helpers if m]
+
+    embed.add_field(name="Помощники", value="
+".join(helper_mentions) if helper_mentions else "—", inline=False)
     embed.set_footer(text="Ожидает подтверждения Пантеоном")
 
-    view = ConfirmView(interaction.user.id, помощник.id if помощник else None, контракт)
+    view = ConfirmView(interaction.user.id, helper_ids, контракт)
     log_channel = bot.get_channel(LOG_CHANNEL_ID)
     if log_channel:
         msg = await log_channel.send(content=f"<@&{PANTEON_ROLE_ID}> требуется подтверждение контракта!", embed=embed, view=view)
         pending_confirmations[msg.id] = {
             "executor": interaction.user.id,
-            "helper": помощник.id if помощник else None,
+            "helpers": helper_ids,
             "contract": контракт
         }
 
 class ConfirmView(discord.ui.View):
-    def __init__(self, executor_id, helper_id, contract_name):
+    def __init__(self, executor_id, helper_ids, contract_name):
         super().__init__(timeout=None)
         self.executor_id = executor_id
-        self.helper_id = helper_id
+        self.helper_ids = helper_ids
         self.contract_name = contract_name
 
     @discord.ui.button(label="✅ Подтвердить", style=discord.ButtonStyle.success)
@@ -146,9 +165,11 @@ class ConfirmView(discord.ui.View):
         user_data.setdefault(info["executor"], {'os': 0, 'rank': 1})
         user_data[info["executor"]]['os'] += 15
 
-        if info["helper"]:
-            user_data.setdefault(info["helper"], {'os': 0, 'rank': 1})
-            user_data[info["helper"]]['os'] += 10
+        for helper_id in info["helpers"]:
+            user_data.setdefault(helper_id, {'os': 0, 'rank': 1})
+            user_data[helper_id]['os'] += 10
+            user_data.setdefault(info["helpers"], {'os': 0, 'rank': 1})
+            user_data[info["helpers"]]['os'] += 10
 
         await interaction.response.send_message("✅ Контракт подтверждён. ОС начислены.")
         await interaction.message.edit(content="Контракт подтверждён Пантеоном.", view=None)
@@ -158,9 +179,8 @@ class ConfirmView(discord.ui.View):
         log_channel = bot.get_channel(LOG_CHANNEL_ID)
         if user_data[info["executor"]]['os'] >= user_data[info["executor"]]['rank'] * 100:
             await log_channel.send(
-                f"🧬 {executor.mention} достиг лимита для повышения (Ранг {user_data[info['executor']]['rank']} → {user_data[info['executor']]['rank'] + 1}).
-"
-                f"<@&{PANTEON_ROLE_ID}>, подтвердите вручную повышение."
+                f"🧬 {executor.mention} достиг лимита для повышения (Ранг {rank_now} → {rank_next}).\n"
+    f"<@&{PANTEON_ROLE_ID}>, подтвердите вручную повышение."
             )
 
     @discord.ui.button(label="❌ Отклонить", style=discord.ButtonStyle.danger)
