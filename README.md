@@ -1,1 +1,1 @@
-# Grindelwald Bot for Render
+# Grindelwald Bot with contracts, verification, and approval system
